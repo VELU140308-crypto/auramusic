@@ -70,17 +70,12 @@ class PlaybackService : MediaSessionService() {
 
     private class CustomMediaSessionCallback : MediaSession.Callback {
         override fun onAddMediaItems(
-            mediaSession: MediaSession,
-            controller: MediaSession.ControllerInfo,
-            mediaItems: MutableList<MediaItem>
-        ): ListenableFuture<MutableList<MediaItem>> {
-            // Allow media items to be queued directly
-            val updatedMediaItems = mediaItems.map { mediaItem ->
-                mediaItem.buildUpon()
-                    .setUri(mediaItem.requestMetadata.mediaUri ?: mediaItem.mediaId)
-                    .build()
-            }.toMutableList()
-            return Futures.immediateFuture(updatedMediaItems)
-        }
+    mediaSession: MediaSession,
+    controller: MediaSession.ControllerInfo,
+    mediaItems: MutableList<MediaItem>
+): ListenableFuture<MutableList<MediaItem>> {
+    return Futures.immediateFuture(mediaItems)
+}
+
     }
 }
