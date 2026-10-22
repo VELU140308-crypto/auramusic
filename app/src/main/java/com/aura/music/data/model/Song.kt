@@ -1,9 +1,11 @@
 package com.aura.music.data.model
 
 import android.net.Uri
+import androidx.compose.runtime.Immutable
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
+@Immutable
 data class Song(
     val id: Long,
     val title: String,

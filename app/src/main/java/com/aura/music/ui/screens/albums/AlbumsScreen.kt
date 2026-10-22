@@ -114,7 +114,8 @@ fun AlbumDetailScreen(
     onBack: () -> Unit
 ) {
     val albumSongs by viewModel.getSongsForAlbum(albumTitle).collectAsState(initial = emptyList())
-    val playbackState by viewModel.playbackState.collectAsState()
+    val currentPlayingSongId by viewModel.currentPlayingSongId.collectAsState()
+    val isPlaying by viewModel.isPlaying.collectAsState()
 
     Scaffold(
         topBar = {
@@ -191,11 +192,11 @@ fun AlbumDetailScreen(
                 }
             }
 
-            items(albumSongs) { song ->
-                val isPlaying = playbackState.currentSong?.id == song.id
+            items(albumSongs, key = { it.id }) { song ->
+                val isThisSongPlaying = isPlaying && currentPlayingSongId == song.id
                 SongItem(
                     song = song,
-                    isPlaying = isPlaying,
+                    isPlaying = isThisSongPlaying,
                     onClick = { viewModel.playSong(song, albumSongs) },
                     onToggleFavorite = { viewModel.toggleFavorite(song) },
                     onAddToPlaylist = { /* open playlist sheet */ }

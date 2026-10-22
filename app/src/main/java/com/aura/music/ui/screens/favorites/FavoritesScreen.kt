@@ -42,7 +42,8 @@ fun FavoritesScreen(
     viewModel: MusicViewModel
 ) {
     val favorites by viewModel.favoriteSongs.collectAsState()
-    val playbackState by viewModel.playbackState.collectAsState()
+    val currentPlayingSongId by viewModel.currentPlayingSongId.collectAsState()
+    val isPlaying by viewModel.isPlaying.collectAsState()
 
     Scaffold(
         topBar = {
@@ -136,10 +137,10 @@ fun FavoritesScreen(
                     items = favorites,
                     key = { it.id }
                 ) { song ->
-                    val isPlaying = playbackState.currentSong?.id == song.id
+                    val isThisSongPlaying = isPlaying && currentPlayingSongId == song.id
                     SongItem(
                         song = song,
-                        isPlaying = isPlaying,
+                        isPlaying = isThisSongPlaying,
                         onClick = { viewModel.playSong(song, favorites) },
                         onToggleFavorite = { viewModel.toggleFavorite(song) },
                         onAddToPlaylist = { /* open playlist sheet */ }

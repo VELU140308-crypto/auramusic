@@ -2,7 +2,6 @@ package com.aura.music.ui.viewmodel
 
 import android.net.Uri
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.aura.music.data.model.Album
 import com.aura.music.data.model.Artist
@@ -21,6 +20,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -60,7 +60,32 @@ class MusicViewModel(
     val albums: StateFlow<List<Album>> = repository.albums
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    // Base Playback State (Only updates on song change, play/pause, etc.)
     val playbackState: StateFlow<PlaybackState> = musicController.playbackState
+
+    // Isolated progress streams to prevent whole-screen recomposition lag
+    val currentPosition: StateFlow<Long> = musicController.currentPosition
+    val duration: StateFlow<Long> = musicController.duration
+
+    // Lightweight derived states for Song lists (prevents recomposing 100+ items every 300ms)
+    val currentPlayingSongId: StateFlow<Long?> = playbackState
+        .map { it.currentSong?.id }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val isPlaying: StateFlow<Boolean> = playbackState
+        .map { it.isPlaying }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    // Volume state and controls
+    val volume: StateFlow<Float> = musicController.volume
+
+    fun setVolume(level: Float) {
+        musicController.setVolume(level)
+    }
+
+    fun toggleMute() {
+        musicController.toggleMute()
+    }
 
     private val _isScanning = MutableStateFlow(false)
     val isScanning: StateFlow<Boolean> = _isScanning.asStateFlow()
@@ -155,6 +180,16 @@ class MusicViewModel(
 
     fun setSortOption(sortOption: SortOption) {
         settingsRepository.setSortOption(sortOption)
+    }
+
+    fun toggleAlphabeticalSort() {
+        val current = sortOption.value
+        val newOption = if (current.sortBy == SortBy.TITLE && current.sortOrder == SortOrder.ASCENDING) {
+            SortOption(SortBy.TITLE, SortOrder.DESCENDING)
+        } else {
+            SortOption(SortBy.TITLE, SortOrder.ASCENDING)
+        }
+        setSortOption(newOption)
     }
 
     fun createPlaylist(name: String) {

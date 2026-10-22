@@ -3,9 +3,7 @@ package com.aura.music.ui.components
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -38,6 +36,8 @@ import com.aura.music.data.model.PlaybackState
 @Composable
 fun MiniPlayer(
     playbackState: PlaybackState,
+    currentPositionProvider: () -> Long,
+    durationProvider: () -> Long,
     onPlayPause: () -> Unit,
     onSkipNext: () -> Unit,
     onClick: () -> Unit,
@@ -64,13 +64,15 @@ fun MiniPlayer(
             tonalElevation = 6.dp
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
-                // Progress Bar at the top of the mini player
-                val progress = if (playbackState.duration > 0) {
-                    (playbackState.currentPosition.toFloat() / playbackState.duration.toFloat()).coerceIn(0f, 1f)
-                } else 0f
-
+                // Deferred progress read: only updates indicator drawing, zero recomposition lag!
                 LinearProgressIndicator(
-                    progress = { progress },
+                    progress = {
+                        val dur = durationProvider()
+                        val pos = currentPositionProvider()
+                        if (dur > 0L) {
+                            (pos.toFloat() / dur.toFloat()).coerceIn(0f, 1f)
+                        } else 0f
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(2.dp),

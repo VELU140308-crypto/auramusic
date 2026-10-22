@@ -17,12 +17,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Sort
 import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Shuffle
-import androidx.compose.material.icons.rounded.Sort
+import androidx.compose.material.icons.rounded.SortByAlpha
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -43,17 +45,25 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.aura.music.data.model.Song
+import com.aura.music.data.model.SortBy
+import com.aura.music.data.model.SortOrder
 import com.aura.music.ui.components.AddToPlaylistBottomSheet
 import com.aura.music.ui.components.CreatePlaylistDialog
+import com.aura.music.ui.components.FastScrollAlphabetBar
+import com.aura.music.ui.components.FastScrollPopupBubble
 import com.aura.music.ui.components.SongItem
 import com.aura.music.ui.components.SortMenuBottomSheet
 import com.aura.music.ui.viewmodel.MusicViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -63,14 +73,37 @@ fun SongsScreen(
 ) {
     val songs by viewModel.allSongs.collectAsState()
     val playlists by viewModel.playlists.collectAsState()
-    val playbackState by viewModel.playbackState.collectAsState()
     val sortOption by viewModel.sortOption.collectAsState()
     val isScanning by viewModel.isScanning.collectAsState()
     val scanMessage by viewModel.scanMessage.collectAsState()
 
+    // Isolated lightweight states to prevent entire list from recomposing every 300ms!
+    val currentPlayingSongId by viewModel.currentPlayingSongId.collectAsState()
+    val isPlaying by viewModel.isPlaying.collectAsState()
+
     var showSortSheet by remember { mutableStateOf(false) }
     var selectedSongForPlaylist by remember { mutableStateOf<Song?>(null) }
     var showCreatePlaylistDialog by remember { mutableStateOf(false) }
+
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+
+    // A-Z index lookup map
+    val letterIndexMap = remember(songs) {
+        val map = mutableMapOf<Char, Int>()
+        songs.forEachIndexed { index, song ->
+            val firstChar = song.title.firstOrNull()?.uppercaseChar() ?: '#'
+            val key = if (firstChar in 'A'..'Z') firstChar else '#'
+            if (!map.containsKey(key)) {
+                map[key] = index
+            }
+        }
+        map
+    }
+    val availableLetters = remember(letterIndexMap) { letterIndexMap.keys }
+
+    var activeLetterPopup by remember { mutableStateOf<Char?>(null) }
+    var hideLetterJob by remember { mutableStateOf<Job?>(null) }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -100,19 +133,30 @@ fun SongsScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "${songs.size} songs",
+                            text = "${songs.size} songs • ${if (sortOption.sortBy == SortBy.TITLE) "A-Z" else sortOption.sortBy.name.replace("_", " ")}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 },
                 actions = {
+                    // Quick A-Z sort toggle button
+                    IconButton(onClick = { viewModel.toggleAlphabeticalSort() }) {
+                        Icon(
+                            imageVector = Icons.Rounded.SortByAlpha,
+                            contentDescription = "A-Z Quick Sort",
+                            tint = if (sortOption.sortBy == SortBy.TITLE) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
                     IconButton(onClick = onNavigateToSearch) {
                         Icon(Icons.Rounded.Search, contentDescription = "Search")
                     }
+
                     IconButton(onClick = { showSortSheet = true }) {
-                        Icon(Icons.Rounded.Sort, contentDescription = "Sort")
+                        Icon(Icons.AutoMirrored.Rounded.Sort, contentDescription = "Sort Options")
                     }
+
                     IconButton(
                         onClick = { viewModel.rescanLibrary() },
                         enabled = !isScanning
@@ -184,24 +228,67 @@ fun SongsScreen(
                     }
                 }
             } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 96.dp)
-                ) {
-                    items(
-                        items = songs,
-                        key = { it.id }
-                    ) { song ->
-                        val isPlaying = playbackState.currentSong?.id == song.id
-                        SongItem(
-                            song = song,
-                            isPlaying = isPlaying,
-                            onClick = { viewModel.playSong(song, songs) },
-                            onToggleFavorite = { viewModel.toggleFavorite(song) },
-                            onAddToPlaylist = { selectedSongForPlaylist = song }
+                Row(modifier = Modifier.fillMaxSize()) {
+                    // Song list (with padding for alphabet strip)
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 96.dp)
+                    ) {
+                        items(
+                            items = songs,
+                            key = { it.id }
+                        ) { song ->
+                            val isThisSongPlaying = isPlaying && currentPlayingSongId == song.id
+                            SongItem(
+                                song = song,
+                                isPlaying = isThisSongPlaying,
+                                onClick = { viewModel.playSong(song, songs) },
+                                onToggleFavorite = { viewModel.toggleFavorite(song) },
+                                onAddToPlaylist = { selectedSongForPlaylist = song }
+                            )
+                        }
+                    }
+
+                    // A-Z Fast Scroll Alphabet Bar on the right
+                    if (songs.size > 8) {
+                        FastScrollAlphabetBar(
+                            availableLetters = availableLetters,
+                            onLetterSelected = { letter ->
+                                activeLetterPopup = letter
+                                hideLetterJob?.cancel()
+                                hideLetterJob = scope.launch {
+                                    delay(900)
+                                    activeLetterPopup = null
+                                }
+
+                                val targetIndex = letterIndexMap[letter] ?: run {
+                                    // Find next closest letter in alphabet
+                                    if (letter in 'A'..'Z') {
+                                        letterIndexMap.filterKeys { it >= letter }.minByOrNull { it.key }?.value
+                                    } else {
+                                        letterIndexMap['#']
+                                    }
+                                }
+
+                                if (targetIndex != null) {
+                                    scope.launch {
+                                        listState.scrollToItem(targetIndex)
+                                    }
+                                }
+                            },
+                            modifier = Modifier.padding(end = 4.dp, top = 8.dp, bottom = 96.dp)
                         )
                     }
                 }
+
+                // Floating bubble showing current letter while scrolling
+                FastScrollPopupBubble(
+                    letter = activeLetterPopup,
+                    modifier = Modifier.align(Alignment.Center)
+                )
             }
         }
 

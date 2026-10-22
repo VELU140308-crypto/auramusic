@@ -35,8 +35,21 @@ class MusicController(
     private var mediaController: MediaController? = null
     private var progressJob: Job? = null
 
+    // Base playback state (updates only on track change, play/pause, shuffle, repeat)
     private val _playbackState = MutableStateFlow(PlaybackState())
     val playbackState: StateFlow<PlaybackState> = _playbackState.asStateFlow()
+
+    // Isolated progress streams to prevent whole-screen recomposition lag
+    private val _currentPosition = MutableStateFlow(0L)
+    val currentPosition: StateFlow<Long> = _currentPosition.asStateFlow()
+
+    private val _duration = MutableStateFlow(0L)
+    val duration: StateFlow<Long> = _duration.asStateFlow()
+
+    // Volume stream (0.0f to 1.0f)
+    private val _volume = MutableStateFlow(1.0f)
+    val volume: StateFlow<Float> = _volume.asStateFlow()
+    private var lastNonZeroVolume: Float = 1.0f
 
     private var currentSongList: List<Song> = emptyList()
 
@@ -74,11 +87,9 @@ class MusicController(
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
-                val duration = controller.duration.coerceAtLeast(0L)
-                _playbackState.update {
-                    it.copy(
-                        duration = if (duration == androidx.media3.common.C.TIME_UNSET) 0L else duration
-                    )
+                val dur = controller.duration.coerceAtLeast(0L)
+                if (dur != androidx.media3.common.C.TIME_UNSET) {
+                    _duration.value = dur
                 }
             }
 
@@ -90,10 +101,16 @@ class MusicController(
                 _playbackState.update {
                     it.copy(
                         currentSong = currentSong,
-                        currentIndex = currentIndex,
-                        currentPosition = 0L,
-                        duration = controller.duration.coerceAtLeast(0L)
+                        currentIndex = currentIndex
                     )
+                }
+
+                _currentPosition.value = 0L
+                val dur = controller.duration.coerceAtLeast(0L)
+                if (dur != androidx.media3.common.C.TIME_UNSET) {
+                    _duration.value = dur
+                } else if (currentSong != null && currentSong.duration > 0) {
+                    _duration.value = currentSong.duration
                 }
 
                 if (currentSong != null) {
@@ -123,7 +140,7 @@ class MusicController(
                     )
                 }
 
-                // If error occurs, attempt to skip to next song if queue exists
+                // Skip to next song if queue exists
                 if (controller.hasNextMediaItem()) {
                     controller.seekToNextMediaItem()
                     controller.prepare()
@@ -144,11 +161,19 @@ class MusicController(
                 currentSong = currentSong,
                 currentIndex = controller.currentMediaItemIndex,
                 isShuffleEnabled = controller.shuffleModeEnabled,
-                repeatMode = controller.repeatMode,
-                currentPosition = controller.currentPosition.coerceAtLeast(0L),
-                duration = controller.duration.coerceAtLeast(0L)
+                repeatMode = controller.repeatMode
             )
         }
+
+        _currentPosition.value = controller.currentPosition.coerceAtLeast(0L)
+        val dur = controller.duration.coerceAtLeast(0L)
+        if (dur != androidx.media3.common.C.TIME_UNSET) {
+            _duration.value = dur
+        } else if (currentSong != null && currentSong.duration > 0) {
+            _duration.value = currentSong.duration
+        }
+
+        _volume.value = controller.volume
 
         if (controller.isPlaying) {
             startProgressTracker()
@@ -163,11 +188,9 @@ class MusicController(
                     if (controller.isPlaying) {
                         val pos = controller.currentPosition.coerceAtLeast(0L)
                         val dur = controller.duration.coerceAtLeast(0L)
-                        _playbackState.update {
-                            it.copy(
-                                currentPosition = pos,
-                                duration = if (dur == androidx.media3.common.C.TIME_UNSET) it.duration else dur
-                            )
+                        _currentPosition.value = pos
+                        if (dur != androidx.media3.common.C.TIME_UNSET && dur > 0) {
+                            _duration.value = dur
                         }
                     }
                 }
@@ -200,6 +223,8 @@ class MusicController(
                 errorMessage = null
             )
         }
+        _currentPosition.value = 0L
+        _duration.value = if (song.duration > 0) song.duration else 0L
     }
 
     fun playQueue(queue: List<Song>, startIndex: Int = 0) {
@@ -223,7 +248,7 @@ class MusicController(
     fun seekTo(positionMs: Long) {
         val controller = mediaController ?: return
         controller.seekTo(positionMs)
-        _playbackState.update { it.copy(currentPosition = positionMs) }
+        _currentPosition.value = positionMs
     }
 
     fun skipToNext() {
@@ -260,6 +285,25 @@ class MusicController(
         }
         controller.repeatMode = newMode
         _playbackState.update { it.copy(repeatMode = newMode) }
+    }
+
+    // Volume controls
+    fun setVolume(level: Float) {
+        val clamped = level.coerceIn(0f, 1f)
+        mediaController?.volume = clamped
+        _volume.value = clamped
+        if (clamped > 0f) {
+            lastNonZeroVolume = clamped
+        }
+    }
+
+    fun toggleMute() {
+        if (_volume.value > 0.01f) {
+            lastNonZeroVolume = _volume.value
+            setVolume(0f)
+        } else {
+            setVolume(if (lastNonZeroVolume > 0.05f) lastNonZeroVolume else 1.0f)
+        }
     }
 
     fun clearError() {

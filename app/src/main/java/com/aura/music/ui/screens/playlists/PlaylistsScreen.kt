@@ -267,7 +267,8 @@ fun PlaylistDetailScreen(
     onBack: () -> Unit
 ) {
     val songs by viewModel.getSongsForPlaylist(playlistId).collectAsState(initial = emptyList())
-    val playbackState by viewModel.playbackState.collectAsState()
+    val currentPlayingSongId by viewModel.currentPlayingSongId.collectAsState()
+    val isPlaying by viewModel.isPlaying.collectAsState()
 
     Scaffold(
         topBar = {
@@ -339,11 +340,11 @@ fun PlaylistDetailScreen(
                     }
                 }
             } else {
-                items(songs) { song ->
-                    val isPlaying = playbackState.currentSong?.id == song.id
+                items(songs, key = { it.id }) { song ->
+                    val isThisSongPlaying = isPlaying && currentPlayingSongId == song.id
                     SongItem(
                         song = song,
-                        isPlaying = isPlaying,
+                        isPlaying = isThisSongPlaying,
                         onClick = { viewModel.playSong(song, songs) },
                         onToggleFavorite = { viewModel.toggleFavorite(song) },
                         onAddToPlaylist = { viewModel.removeSongFromPlaylist(playlistId, song.id) }

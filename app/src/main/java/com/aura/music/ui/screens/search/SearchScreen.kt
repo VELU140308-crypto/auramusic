@@ -45,7 +45,8 @@ fun SearchScreen(
 ) {
     val searchQuery by viewModel.searchQuery.collectAsState()
     val searchResults by viewModel.searchResults.collectAsState()
-    val playbackState by viewModel.playbackState.collectAsState()
+    val currentPlayingSongId by viewModel.currentPlayingSongId.collectAsState()
+    val isPlaying by viewModel.isPlaying.collectAsState()
 
     Scaffold(
         topBar = {
@@ -143,10 +144,10 @@ fun SearchScreen(
                     items = searchResults,
                     key = { it.id }
                 ) { song ->
-                    val isPlaying = playbackState.currentSong?.id == song.id
+                    val isThisSongPlaying = isPlaying && currentPlayingSongId == song.id
                     SongItem(
                         song = song,
-                        isPlaying = isPlaying,
+                        isPlaying = isThisSongPlaying,
                         onClick = { viewModel.playSong(song, searchResults) },
                         onToggleFavorite = { viewModel.toggleFavorite(song) },
                         onAddToPlaylist = { /* open playlist sheet */ }

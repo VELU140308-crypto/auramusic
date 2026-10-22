@@ -45,7 +45,8 @@ fun HistoryScreen(
     onBack: () -> Unit
 ) {
     val history by viewModel.recentlyPlayedSongs.collectAsState()
-    val playbackState by viewModel.playbackState.collectAsState()
+    val currentPlayingSongId by viewModel.currentPlayingSongId.collectAsState()
+    val isPlaying by viewModel.isPlaying.collectAsState()
     var showClearConfirm by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -116,10 +117,10 @@ fun HistoryScreen(
                     items = history,
                     key = { it.id }
                 ) { song ->
-                    val isPlaying = playbackState.currentSong?.id == song.id
+                    val isThisSongPlaying = isPlaying && currentPlayingSongId == song.id
                     SongItem(
                         song = song,
-                        isPlaying = isPlaying,
+                        isPlaying = isThisSongPlaying,
                         onClick = { viewModel.playSong(song, history) },
                         onToggleFavorite = { viewModel.toggleFavorite(song) },
                         onAddToPlaylist = { /* open playlist sheet */ }

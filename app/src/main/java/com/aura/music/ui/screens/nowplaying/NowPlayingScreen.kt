@@ -13,9 +13,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.VolumeDown
+import androidx.compose.material.icons.automirrored.rounded.VolumeMute
+import androidx.compose.material.icons.automirrored.rounded.VolumeOff
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
@@ -73,6 +79,11 @@ fun NowPlayingScreen(
 ) {
     val playbackState by viewModel.playbackState.collectAsState()
     val currentSong = playbackState.currentSong
+
+    // Isolated progress streams
+    val currentPosition by viewModel.currentPosition.collectAsState()
+    val rawDuration by viewModel.duration.collectAsState()
+    val volume by viewModel.volume.collectAsState()
 
     var isUserDraggingSlider by remember { mutableStateOf(false) }
     var sliderDragPosition by remember { mutableFloatStateOf(0f) }
@@ -139,6 +150,7 @@ fun NowPlayingScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.SpaceBetween
@@ -179,7 +191,7 @@ fun NowPlayingScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 // Large Artwork Container
                 Box(
@@ -197,7 +209,7 @@ fun NowPlayingScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
                 // Metadata Row (Title, Artist, Heart Favorite)
                 Row(
@@ -236,15 +248,15 @@ fun NowPlayingScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 // Seek Bar Slider & Time Labels
-                val songDuration = if (playbackState.duration > 0) playbackState.duration else currentSong.duration
-                val currentPosition = if (isUserDraggingSlider) sliderDragPosition.toLong() else playbackState.currentPosition
+                val totalDuration = if (rawDuration > 0) rawDuration else currentSong.duration
+                val displayPosition = if (isUserDraggingSlider) sliderDragPosition.toLong() else currentPosition
 
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Slider(
-                        value = currentPosition.toFloat().coerceIn(0f, songDuration.toFloat().coerceAtLeast(1f)),
+                        value = displayPosition.toFloat().coerceIn(0f, totalDuration.toFloat().coerceAtLeast(1f)),
                         onValueChange = { value ->
                             isUserDraggingSlider = true
                             sliderDragPosition = value
@@ -253,7 +265,7 @@ fun NowPlayingScreen(
                             viewModel.seekTo(sliderDragPosition.toLong())
                             isUserDraggingSlider = false
                         },
-                        valueRange = 0f..songDuration.toFloat().coerceAtLeast(1f),
+                        valueRange = 0f..totalDuration.toFloat().coerceAtLeast(1f),
                         colors = SliderDefaults.colors(
                             thumbColor = MaterialTheme.colorScheme.primary,
                             activeTrackColor = MaterialTheme.colorScheme.primary,
@@ -267,19 +279,19 @@ fun NowPlayingScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = formatTimeMs(currentPosition),
+                            text = formatTimeMs(displayPosition),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = formatTimeMs(songDuration),
+                            text = formatTimeMs(totalDuration),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 // Playback Control Buttons Row
                 Row(
@@ -312,7 +324,7 @@ fun NowPlayingScreen(
                     // Play / Pause FAB
                     FilledIconButton(
                         onClick = { viewModel.togglePlayPause() },
-                        modifier = Modifier.size(72.dp),
+                        modifier = Modifier.size(68.dp),
                         shape = CircleShape,
                         colors = IconButtonDefaults.filledIconButtonColors(
                             containerColor = MaterialTheme.colorScheme.primary,
@@ -322,7 +334,7 @@ fun NowPlayingScreen(
                         Icon(
                             imageVector = if (playbackState.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                             contentDescription = if (playbackState.isPlaying) "Pause" else "Play",
-                            modifier = Modifier.size(40.dp)
+                            modifier = Modifier.size(38.dp)
                         )
                     }
 
@@ -357,7 +369,64 @@ fun NowPlayingScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // VOLUME CONTROL SLIDER OPTION
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = { viewModel.toggleMute() },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = when {
+                                    volume <= 0.01f -> Icons.AutoMirrored.Rounded.VolumeOff
+                                    volume < 0.5f -> Icons.AutoMirrored.Rounded.VolumeDown
+                                    else -> Icons.AutoMirrored.Rounded.VolumeUp
+                                },
+                                contentDescription = "Mute / Unmute",
+                                tint = if (volume <= 0.01f) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+
+                        Slider(
+                            value = volume,
+                            onValueChange = { viewModel.setVolume(it) },
+                            valueRange = 0f..1f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = MaterialTheme.colorScheme.primary,
+                                activeTrackColor = MaterialTheme.colorScheme.primary,
+                                inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 8.dp)
+                        )
+
+                        Text(
+                            text = "${(volume * 100).toInt()}%",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.width(36.dp),
+                            textAlign = TextAlign.End
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
 
                 // Bottom Offline badge & queue quick trigger
                 Row(
@@ -377,7 +446,7 @@ fun NowPlayingScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(28.dp))
             }
         }
 

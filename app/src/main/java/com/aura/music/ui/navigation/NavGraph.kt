@@ -60,6 +60,8 @@ fun AuraNavGraph(
                     // Persistent Mini Player above Bottom Bar
                     MiniPlayer(
                         playbackState = playbackState,
+                        currentPositionProvider = { musicViewModel.currentPosition.value },
+                        durationProvider = { musicViewModel.duration.value },
                         onPlayPause = { musicViewModel.togglePlayPause() },
                         onSkipNext = { musicViewModel.skipToNext() },
                         onClick = {
