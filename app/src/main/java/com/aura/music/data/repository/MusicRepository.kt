@@ -15,6 +15,7 @@ import com.aura.music.data.saf.SafImporter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
@@ -29,35 +30,34 @@ class MusicRepository(
 
     val allSongs: Flow<List<Song>> = songDao.getAllSongs().map { list ->
         list.map { it.toSong() }
-    }
+    }.flowOn(Dispatchers.Default)
 
     val favoriteSongs: Flow<List<Song>> = songDao.getFavoriteSongs().map { list ->
         list.map { it.toSong() }
-    }
+    }.flowOn(Dispatchers.Default)
 
     val mostPlayedSongs: Flow<List<Song>> = songDao.getMostPlayedSongs().map { list ->
         list.map { it.toSong() }
-    }
+    }.flowOn(Dispatchers.Default)
 
     val recentlyAddedSongs: Flow<List<Song>> = songDao.getRecentlyAddedSongs().map { list ->
         list.map { it.toSong() }
-    }
+    }.flowOn(Dispatchers.Default)
 
     val recentlyPlayedSongs: Flow<List<Song>> = historyDao.getRecentlyPlayed().map { list ->
         list.map { it.toSong() }
-    }
+    }.flowOn(Dispatchers.Default)
 
-    val playlists: Flow<List<Playlist>> = playlistDao.getAllPlaylists().map { list ->
+    val playlists: Flow<List<Playlist>> = playlistDao.getPlaylistsWithCount().map { list ->
         list.map { entity ->
-            val count = playlistDao.getSongCountForPlaylist(entity.id).first()
             Playlist(
                 id = entity.id,
                 name = entity.name,
                 createdAt = entity.createdAt,
-                songCount = count
+                songCount = entity.songCount
             )
         }
-    }
+    }.flowOn(Dispatchers.Default)
 
     val artists: Flow<List<Artist>> = allSongs.map { songs ->
         songs.groupBy { it.artist }.map { (artistName, songList) ->
@@ -67,8 +67,8 @@ class MusicRepository(
                 songCount = songList.size,
                 albumCount = albumCount
             )
-        }.sortedBy { it.name.lowercase() }
-    }
+        }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+    }.flowOn(Dispatchers.Default)
 
     val albums: Flow<List<Album>> = allSongs.map { songs ->
         songs.groupBy { it.album }.map { (albumTitle, songList) ->
@@ -80,31 +80,31 @@ class MusicRepository(
                 artworkUri = firstSong.albumArtUri,
                 songCount = songList.size
             )
-        }.sortedBy { it.title.lowercase() }
-    }
+        }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
+    }.flowOn(Dispatchers.Default)
 
     fun getSongsForPlaylist(playlistId: Long): Flow<List<Song>> {
         return playlistDao.getSongsForPlaylist(playlistId).map { list ->
             list.map { it.toSong() }
-        }
+        }.flowOn(Dispatchers.Default)
     }
 
     fun getSongsForArtist(artist: String): Flow<List<Song>> {
         return songDao.getSongsByArtist(artist).map { list ->
             list.map { it.toSong() }
-        }
+        }.flowOn(Dispatchers.Default)
     }
 
     fun getSongsForAlbum(album: String): Flow<List<Song>> {
         return songDao.getSongsByAlbum(album).map { list ->
             list.map { it.toSong() }
-        }
+        }.flowOn(Dispatchers.Default)
     }
 
     fun searchSongs(query: String): Flow<List<Song>> {
         return songDao.searchSongs(query).map { list ->
             list.map { it.toSong() }
-        }
+        }.flowOn(Dispatchers.Default)
     }
 
     suspend fun rescanLibrary(): Int = withContext(Dispatchers.IO) {

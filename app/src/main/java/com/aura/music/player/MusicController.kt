@@ -118,6 +118,10 @@ class MusicController(
                 }
             }
 
+            override fun onVolumeChanged(volume: Float) {
+                _volume.value = volume
+            }
+
             override fun onRepeatModeChanged(repeatMode: Int) {
                 _playbackState.update { it.copy(repeatMode = repeatMode) }
             }

@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Sort
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
@@ -28,6 +29,7 @@ import androidx.compose.material.icons.rounded.SortByAlpha
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -53,6 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.aura.music.data.model.Song
 import com.aura.music.data.model.SortBy
+import com.aura.music.data.model.SortOption
 import com.aura.music.data.model.SortOrder
 import com.aura.music.ui.components.AddToPlaylistBottomSheet
 import com.aura.music.ui.components.CreatePlaylistDialog
@@ -228,59 +231,108 @@ fun SongsScreen(
                     }
                 }
             } else {
-                Row(modifier = Modifier.fillMaxSize()) {
-                    // Song list (with padding for alphabet strip)
-                    LazyColumn(
-                        state = listState,
+                Column(modifier = Modifier.fillMaxSize()) {
+                    // Visible Sort Options bar
+                    Row(
                         modifier = Modifier
-                            .weight(1f)
-                            .fillMaxSize(),
-                        contentPadding = PaddingValues(bottom = 96.dp)
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        items(
-                            items = songs,
-                            key = { it.id }
-                        ) { song ->
-                            val isThisSongPlaying = isPlaying && currentPlayingSongId == song.id
-                            SongItem(
-                                song = song,
-                                isPlaying = isThisSongPlaying,
-                                onClick = { viewModel.playSong(song, songs) },
-                                onToggleFavorite = { viewModel.toggleFavorite(song) },
-                                onAddToPlaylist = { selectedSongForPlaylist = song }
-                            )
-                        }
+                        FilterChip(
+                            selected = sortOption.sortBy == SortBy.TITLE && sortOption.sortOrder == SortOrder.ASCENDING,
+                            onClick = {
+                                viewModel.setSortOption(SortOption(SortBy.TITLE, SortOrder.ASCENDING))
+                            },
+                            label = { Text("Title A–Z") },
+                            leadingIcon = if (sortOption.sortBy == SortBy.TITLE && sortOption.sortOrder == SortOrder.ASCENDING) {
+                                { Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                            } else null
+                        )
+
+                        FilterChip(
+                            selected = sortOption.sortBy == SortBy.TITLE && sortOption.sortOrder == SortOrder.DESCENDING,
+                            onClick = {
+                                viewModel.setSortOption(SortOption(SortBy.TITLE, SortOrder.DESCENDING))
+                            },
+                            label = { Text("Title Z–A") },
+                            leadingIcon = if (sortOption.sortBy == SortBy.TITLE && sortOption.sortOrder == SortOrder.DESCENDING) {
+                                { Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                            } else null
+                        )
+
+                        FilterChip(
+                            selected = sortOption.sortBy != SortBy.TITLE,
+                            onClick = { showSortSheet = true },
+                            label = {
+                                Text(
+                                    if (sortOption.sortBy != SortBy.TITLE)
+                                        sortOption.sortBy.name.replace("_", " ").lowercase().replaceFirstChar { it.uppercase() }
+                                    else "More ▾"
+                                )
+                            }
+                        )
                     }
 
-                    // A-Z Fast Scroll Alphabet Bar on the right
-                    if (songs.size > 8) {
-                        FastScrollAlphabetBar(
-                            availableLetters = availableLetters,
-                            onLetterSelected = { letter ->
-                                activeLetterPopup = letter
-                                hideLetterJob?.cancel()
-                                hideLetterJob = scope.launch {
-                                    delay(900)
-                                    activeLetterPopup = null
-                                }
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                    ) {
+                        // Song list (with padding for alphabet strip)
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxSize(),
+                            contentPadding = PaddingValues(bottom = 96.dp)
+                        ) {
+                            items(
+                                items = songs,
+                                key = { it.id }
+                            ) { song ->
+                                val isThisSongPlaying = isPlaying && currentPlayingSongId == song.id
+                                SongItem(
+                                    song = song,
+                                    isPlaying = isThisSongPlaying,
+                                    onClick = { viewModel.playSong(song, songs) },
+                                    onToggleFavorite = { viewModel.toggleFavorite(song) },
+                                    onAddToPlaylist = { selectedSongForPlaylist = song }
+                                )
+                            }
+                        }
 
-                                val targetIndex = letterIndexMap[letter] ?: run {
-                                    // Find next closest letter in alphabet
-                                    if (letter in 'A'..'Z') {
-                                        letterIndexMap.filterKeys { it >= letter }.minByOrNull { it.key }?.value
-                                    } else {
-                                        letterIndexMap['#']
+                        // A-Z Fast Scroll Alphabet Bar on the right
+                        if (songs.size > 8) {
+                            FastScrollAlphabetBar(
+                                availableLetters = availableLetters,
+                                onLetterSelected = { letter ->
+                                    activeLetterPopup = letter
+                                    hideLetterJob?.cancel()
+                                    hideLetterJob = scope.launch {
+                                        delay(900)
+                                        activeLetterPopup = null
                                     }
-                                }
 
-                                if (targetIndex != null) {
-                                    scope.launch {
-                                        listState.scrollToItem(targetIndex)
+                                    val targetIndex = letterIndexMap[letter] ?: run {
+                                        // Find next closest letter in alphabet
+                                        if (letter in 'A'..'Z') {
+                                            letterIndexMap.filterKeys { it >= letter }.minByOrNull { it.key }?.value
+                                        } else {
+                                            letterIndexMap['#']
+                                        }
                                     }
-                                }
-                            },
-                            modifier = Modifier.padding(end = 4.dp, top = 8.dp, bottom = 96.dp)
-                        )
+
+                                    if (targetIndex != null) {
+                                        scope.launch {
+                                            listState.scrollToItem(targetIndex)
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.padding(end = 4.dp, top = 8.dp, bottom = 96.dp)
+                            )
+                        }
                     }
                 }
 

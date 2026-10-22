@@ -18,6 +18,13 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
+          cache: 'gradle'
+
+      - name: Cache Android Debug Keystore
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: ${{ runner.os }}-android-debug-keystore
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -30,3 +37,4 @@ jobs:
         with:
           name: AuraMusic-Offline-Player-debug
           path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30

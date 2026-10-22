@@ -14,12 +14,14 @@ import com.aura.music.data.model.SortOrder
 import com.aura.music.data.repository.MusicRepository
 import com.aura.music.data.repository.SettingsRepository
 import com.aura.music.player.MusicController
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -37,7 +39,8 @@ class MusicViewModel(
         sortOption
     ) { songs, sort ->
         sortSongs(songs, sort)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }.flowOn(Dispatchers.Default)
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val favoriteSongs: StateFlow<List<Song>> = repository.favoriteSongs
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -107,9 +110,11 @@ class MusicViewModel(
                 it.album.lowercase().contains(q)
             }
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }.flowOn(Dispatchers.Default)
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun rescanLibrary() {
+        if (_isScanning.value) return // Prevent duplicate concurrent scans
         viewModelScope.launch {
             _isScanning.value = true
             try {
@@ -235,12 +240,24 @@ class MusicViewModel(
     }
 
     private fun sortSongs(songs: List<Song>, sort: SortOption): List<Song> {
-        val comparator = when (sort.sortBy) {
-            SortBy.TITLE -> compareBy<Song> { it.title.lowercase() }
-            SortBy.ARTIST -> compareBy<Song> { it.artist.lowercase() }
-            SortBy.ALBUM -> compareBy<Song> { it.album.lowercase() }
-            SortBy.DATE_ADDED -> compareBy<Song> { it.dateAdded }
-            SortBy.DURATION -> compareBy<Song> { it.duration }
+        val comparator: Comparator<Song> = when (sort.sortBy) {
+            SortBy.TITLE -> Comparator { s1, s2 ->
+                val t1 = s1.title.ifBlank { "Unknown Title" }
+                val t2 = s2.title.ifBlank { "Unknown Title" }
+                String.CASE_INSENSITIVE_ORDER.compare(t1, t2)
+            }
+            SortBy.ARTIST -> Comparator { s1, s2 ->
+                val a1 = s1.artist.ifBlank { "Unknown Artist" }
+                val a2 = s2.artist.ifBlank { "Unknown Artist" }
+                String.CASE_INSENSITIVE_ORDER.compare(a1, a2)
+            }
+            SortBy.ALBUM -> Comparator { s1, s2 ->
+                val b1 = s1.album.ifBlank { "Unknown Album" }
+                val b2 = s2.album.ifBlank { "Unknown Album" }
+                String.CASE_INSENSITIVE_ORDER.compare(b1, b2)
+            }
+            SortBy.DATE_ADDED -> compareBy { it.dateAdded }
+            SortBy.DURATION -> compareBy { it.duration }
         }
 
         return if (sort.sortOrder == SortOrder.ASCENDING) {
